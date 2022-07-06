@@ -138,7 +138,6 @@ class Net(Module):
         self.fc2 = Linear(64, 2)  # 2-dimensional input to QNN
         self.qnn = TorchConnector(qnn)  # Apply torch connector, weights chosen
         # uniformly at random from interval [-1,1].
-        self.fc3 = Linear(1, 1)  # 1-dimensional output from QNN
 
     def forward(self, x):
         x = F.relu(self.conv1(x))
@@ -152,7 +151,6 @@ class Net(Module):
         #x = F.relu(self.fc1(x))
         #x = self.fc2(x)
         x = self.qnn(x)  # apply QNN
-        x = self.fc3(x)
         return cat((x, 1 - x), -1)
 
 
