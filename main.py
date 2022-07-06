@@ -29,7 +29,7 @@ from qiskit.utils import QuantumInstance, algorithm_globals
 
 transform = transforms.Compose([
     transforms.CenterCrop(18),
-    transforms.Resize(7),
+    transforms.Resize(10),
     transforms.ToTensor()])
 # Train Dataset
 # -------------
@@ -96,27 +96,34 @@ test_loader = DataLoader(X_test, batch_size=batch_size, shuffle=True)
 qi = QuantumInstance(Aer.get_backend("aer_simulator_statevector"))
 
 # Define the encoding circuit
-n_qbits = 7
-circuit = QuantumCircuit(n_qbits)
-circuit.h(range(n_qbits))
-
+n_qbits = 3
+n_layers = 3
+encoding_circuit = QuantumCircuit(n_qbits)
+encoding_circuit.h(range(n_qbits))
 
 # Populate circuit
 for n in range(n_qbits):
-    for i in range(n_qbits): 
-        circuit.rx(Parameter(str([n,i])),i)
-    if n < n_qbits-1:
-        for j in range(n_qbits-1): 
-            circuit.cx(j,j+1)
-        circuit.barrier(range(n_qbits))
+    encoding_circuit.rx(Parameter('e' + str(n)),n)
+for n in range(n_qbits):
+    encoding_circuit.cx(n,(n+1)%n_qbits)
+
+parametrised_circuit = QuantumCircuit(n_qbits)
+parametrised_circuit.h(range(n_qbits))
+
+# Populate circuit
+for l in range(n_layers):
+    for n in range(n_qbits):
+        parametrised_circuit.rx(Parameter('p' + str(n) + str(l)),n)
+    for n in range(n_qbits):
+        parametrised_circuit.cx(n,(n+1)%n_qbits)
 
 # Define and create QNN
 def create_qnn():
-    feature_map = ZZFeatureMap(2)
-    ansatz = RealAmplitudes(2, reps=1)
+    feature_map = ZZFeatureMap(n_qbits)# encoding_circuit#ZZFeatureMap(2)
+    ansatz = parametrised_circuit#RealAmplitudes(n_qbits, reps=1)#parametrised_circuit#RealAmplitudes(2, reps=1)
     # REMEMBER TO SET input_gradients=True FOR ENABLING HYBRID GRADIENT BACKPROP
     qnn = TwoLayerQNN(
-        2,
+        n_qbits,
         feature_map,
         ansatz,
         input_gradients=True,
@@ -126,30 +133,21 @@ def create_qnn():
     return qnn
 
 qnn = create_qnn()
-print(qnn.operator)
+#print(qnn.operator)
 
 class Net(Module):
     def __init__(self, qnn):
         super().__init__()
-        self.conv1 = Conv2d(1, 2, kernel_size=5)
-        self.conv2 = Conv2d(2, 16, kernel_size=5)
-        self.dropout = Dropout2d()
-        self.fc1 = Linear(256, 64)
-        self.fc2 = Linear(64, 2)  # 2-dimensional input to QNN
+        self.conv1 = Conv2d(1, 3, kernel_size=4)
+        self.fc1 = Linear(27, n_qbits)
         self.qnn = TorchConnector(qnn)  # Apply torch connector, weights chosen
-        # uniformly at random from interval [-1,1].
 
     def forward(self, x):
+        
         x = F.relu(self.conv1(x))
         x = F.max_pool2d(x, 2)
-        #x = F.relu(self.conv2(x))
-        #x = F.max_pool2d(x, 2)
-        #x = self.dropout(x)
         x = x.view(x.shape[0], -1)
-        #print(x.shape)
-        #exit()
-        #x = F.relu(self.fc1(x))
-        #x = self.fc2(x)
+        x = self.fc1(x)
         x = self.qnn(x)  # apply QNN
         return cat((x, 1 - x), -1)
 
