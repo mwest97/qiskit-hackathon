@@ -19,6 +19,7 @@ from torch.nn import (
     Sequential,
     ReLU,
 )
+
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from qiskit.circuit.library import RealAmplitudes, ZZFeatureMap
@@ -121,7 +122,6 @@ for l in range(n_layers):
 def create_qnn():
     feature_map = ZZFeatureMap(n_qbits)# encoding_circuit#ZZFeatureMap(2)
     ansatz = parametrised_circuit#RealAmplitudes(n_qbits, reps=1)#parametrised_circuit#RealAmplitudes(2, reps=1)
-    # REMEMBER TO SET input_gradients=True FOR ENABLING HYBRID GRADIENT BACKPROP
     qnn = TwoLayerQNN(
         n_qbits,
         feature_map,
@@ -139,8 +139,10 @@ class Net(Module):
     def __init__(self, qnn):
         super().__init__()
         self.conv1 = Conv2d(1, 3, kernel_size=4)
-        self.fc1 = Linear(27, n_qbits)
-        self.qnn = TorchConnector(qnn)  # Apply torch connector, weights chosen
+        self.fc1 = Linear(27, n_qbits)  # 27 is just what happens to come out of the conv + maxpool
+                                        # this is a "fully connected layer" to take the conv output 
+                                        # and produce the right number of outputs to feed into the quantum circuit
+        self.qnn = TorchConnector(qnn)  
 
     def forward(self, x):
         
@@ -148,43 +150,65 @@ class Net(Module):
         x = F.max_pool2d(x, 2)
         x = x.view(x.shape[0], -1)
         x = self.fc1(x)
-        x = self.qnn(x)  # apply QNN
+        x = self.qnn(x)
+        
         return cat((x, 1 - x), -1)
 
 
-model = Net(qnn)
-
 # Define model, optimizer, and loss function
+
+model = Net(qnn)
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 loss_func = NLLLoss()
 
 # Start training
 epochs = 5  # Set number of epochs
 loss_list = []  # Store loss history
-model.train()  # Set model to training mode
 
-for epoch in range(epochs):
-    total_loss = []
-    for batch_idx, (data, target) in enumerate(train_loader):
-        optimizer.zero_grad(set_to_none=True)  # Initialize gradient
-        output = model(data)  # Forward pass
-        loss = loss_func(output, target)  # Calculate loss
-        loss.backward()  # Backward pass
-        optimizer.step()  # Optimize weights
-        total_loss.append(loss.item())  # Store loss
-    loss_list.append(sum(total_loss) / len(total_loss))
-    print("Training [{:.0f}%]\tLoss: {:.4f}".format(100.0 * (epoch + 1) / epochs, loss_list[-1]))
+train = 1  # if 0 we just load a previously saved model 
+eps = 0.1
+
+if train:
+    
+    print(sum(p.numel() for p in model.parameters() if p.requires_grad)) # number of parameters
+    
+    # this is just default training code; I just copy and paste it into every pytorch project
+
+    model.train()  # Set model to training mode
+    for epoch in range(epochs):
+        total_loss = []
+        for batch_idx, (data, target) in enumerate(train_loader):
+            optimizer.zero_grad(set_to_none=True)  # Initialize gradient
+            output = model(data)  # Forward pass
+            loss = loss_func(output, target)  # Calculate loss
+            loss.backward()  # Backward pass
+            optimizer.step()  # Optimize weights
+            total_loss.append(loss.item())  # Store loss
+        loss_list.append(sum(total_loss) / len(total_loss))
+        print("Training [{:.0f}%]\tLoss: {:.4f}".format(100.0 * (epoch + 1) / epochs, loss_list[-1]))
+
+    torch.save(model.state_dict(), "model.pt")
+
+else:
+    model.load_state_dict(torch.load("model.pt"))
+
 
 model.eval()  # set model to evaluation mode
 with no_grad():
 
+    total_loss = []
     correct = 0
     for batch_idx, (data, target) in enumerate(test_loader):
+        
+        # eval on test data
         output = model(data)
-        if len(output.shape) == 1:
-            output = output.reshape(1, *output.shape)
+        
+        # output is two numbers, the prob of being 0 or 1
+        # argmax of this gives the actual prediction
 
         pred = output.argmax(dim=1, keepdim=True)
+        
+        # correct is how many times the predictions equal the target labels
         correct += pred.eq(target.view_as(pred)).sum().item()
 
         loss = loss_func(output, target)
@@ -195,3 +219,4 @@ with no_grad():
             sum(total_loss) / len(total_loss), correct / len(test_loader) / batch_size * 100
         )
     )
+
