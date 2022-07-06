@@ -139,14 +139,21 @@ class Net(Module):
     def __init__(self, qnn):
         super().__init__()
         self.conv1 = Conv2d(1, 3, kernel_size=4)
+        self.conv2 = Conv2d(3, 3, kernel_size=2)
         self.fc1 = Linear(27, n_qbits)
         self.qnn = TorchConnector(qnn)  # Apply torch connector, weights chosen
 
     def forward(self, x):
         
         x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
+        # print(x.shape)
         x = F.max_pool2d(x, 2)
+        # print(x.shape)
+
         x = x.view(x.shape[0], -1)
+        # print(x.shape)
+
         x = self.fc1(x)
         x = self.qnn(x)  # apply QNN
         return cat((x, 1 - x), -1)
@@ -195,3 +202,6 @@ with no_grad():
             sum(total_loss) / len(total_loss), correct / len(test_loader) / batch_size * 100
         )
     )
+
+    model_parameters = filter(lambda p: p.requires_grad, model.parameters())
+    params = sum([np.prod(p.size()) for p in model_parameters])
