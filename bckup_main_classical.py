@@ -28,6 +28,25 @@ from qiskit_machine_learning.connectors import TorchConnector
 from qiskit.opflow import AerPauliExpectation
 from qiskit.utils import QuantumInstance, algorithm_globals
 
+from time import time
+
+CLASS_0 = 4
+CLASS_1 = 5
+quantum = 1
+
+train = 1  # if 0 we just load a previously saved model
+eps   = 0.005
+adv   = 1
+plot  = 1
+n_samples_show = 7
+LABEL = "C"
+if quantum:
+    LABEL = "Q"
+_time = round(time())
+MODEL_NAME = f"{LABEL}_{CLASS_0}_{CLASS_1}_model.pt"
+
+
+
 transform = transforms.Compose([
     transforms.CenterCrop(18),
     transforms.Resize(10),
@@ -47,11 +66,15 @@ X_train = datasets.MNIST(
 )
 
 # Filter out labels (originally 0-9), leaving only labels 0 and 1
-# idx = np.append(
-#     np.where(X_train.targets == 0)[0][:n_samples], np.where(X_train.targets == 1)[0][:n_samples]
-# )
-X_train.data = X_train.data[:1000]
-X_train.targets = X_train.targets[:1000]
+idx = np.append(
+    np.where(X_train.targets == CLASS_0)[0][:n_samples], np.where(X_train.targets == CLASS_1)[0][:n_samples]
+)
+X_train.data = X_train.data[idx]
+X_train.targets[np.where(X_train.targets == CLASS_0)] = 0
+X_train.targets[np.where(X_train.targets == CLASS_1)] = 1
+
+X_train.targets = X_train.targets[idx]
+
 
 # Define torch dataloader with filtered data
 train_loader = DataLoader(X_train, batch_size=batch_size, shuffle=True)
@@ -74,10 +97,15 @@ X_test = datasets.MNIST(
 
 # Filter out labels (originally 0-9), leaving only labels 0 and 1
 idx = np.append(
-    np.where(X_test.targets == 0)[0][:n_samples], np.where(X_test.targets == 1)[0][:n_samples]
+    np.where(X_test.targets == CLASS_0)[0][:n_samples],
+    np.where(X_test.targets == CLASS_1)[0][:n_samples]
 )
 X_test.data = X_test.data[idx]
+X_test.targets[np.where(X_test.targets == CLASS_0)] = 0
+X_test.targets[np.where(X_test.targets == CLASS_1)] = 1
+
 X_test.targets = X_test.targets[idx]
+
 
 # Define torch dataloader with filtered data
 test_loader = DataLoader(X_test, batch_size=batch_size, shuffle=True)
@@ -124,7 +152,7 @@ qnn = create_qnn()
 #print(qnn.operator)
 
 
-class Net(Module):
+class ClassicalNet(Module):
     def __init__(self):
         super().__init__()
         self.conv1 = Conv2d(1, 6, kernel_size=4)
@@ -147,9 +175,31 @@ class Net(Module):
         return x  # cat((x, 1 - x), -1)
 
 
+class Net(Module):
+    def __init__(self, qnn):
+        super().__init__()
+        self.conv1 = Conv2d(1, 3, kernel_size=4)
+        self.fc1 = Linear(27, n_qbits)  # 27 is just what happens to come out of the conv + maxpool
+        # this is a "fully connected layer" to take the conv output
+        # and produce the right number of outputs to feed into the quantum circuit
+        self.qnn = TorchConnector(qnn)
+
+    def forward(self, x):
+        x = F.relu(self.conv1(x))
+        x = F.max_pool2d(x, 2)
+        x = x.view(x.shape[0], -1)
+        x = self.fc1(x)
+        x = self.qnn(x)
+
+        return cat((x, 1 - x), -1)
+
 # Define model, optimizer, and loss function
 
-model = Net()
+
+if quantum:
+    model = Net(qnn)
+else:
+    model = ClassicalNet()
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 loss_func = NLLLoss()
 
@@ -157,11 +207,6 @@ loss_func = NLLLoss()
 epochs = 5  # Set number of epochs
 loss_list = []  # Store loss history
 
-train = 1  # if 0 we just load a previously saved model
-eps   = 0.005
-adv   = 1
-plot  = 0
-n_samples_show = 7 
 
 if train:
     
@@ -182,10 +227,10 @@ if train:
         loss_list.append(sum(total_loss) / len(total_loss))
         print("Training [{:.0f}%]\tLoss: {:.4f}".format(100.0 * (epoch + 1) / epochs, loss_list[-1]))
 
-    torch.save(model.state_dict(), "classical_model.pt")
+    torch.save(model.state_dict(), f"models/{MODEL_NAME}")
 
 else:
-    model.load_state_dict(torch.load("classical_model.pt"))
+    model.load_state_dict(torch.load(f"models/{MODEL_NAME}"))
 
 
 #model.eval()  # set model to evaluation mode
@@ -263,9 +308,9 @@ if adv:
             axes[1, batch_idx].set_xticks([])
             axes[1, batch_idx].set_yticks([])
             axes[1, batch_idx].set_title("Correct!" * int(adv_correct) + "Wrong :(" * (1 - int(adv_correct)), color='blue'*int(adv_correct) + 'red' * (1-int(adv_correct)))
-            #plt.imshow(data[0,0], cmap=plt.cm.binary_r)
+            # plt.imshow(data[0,0], cmap=plt.cm.binary_r)
             if batch_idx == n_samples_show - 1:
-                plt.show()
+                plt.savefig(f"plots/{LABEL}-{CLASS_0}-{CLASS_1}-{_time}.png")
                 exit()
 
 

@@ -4,7 +4,6 @@
     <list default="true" id="e08d11e5-df91-4377-b541-f94166c15a5d" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/bckup_main_classical.py" beforeDir="false" afterPath="$PROJECT_DIR$/bckup_main_classical.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/model.pt" beforeDir="false" afterPath="$PROJECT_DIR$/model.pt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
