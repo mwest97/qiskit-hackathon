@@ -19,6 +19,7 @@ from torch.nn import (
     Sequential,
     ReLU,
 )
+
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from qiskit.circuit.library import RealAmplitudes, ZZFeatureMap
@@ -55,20 +56,8 @@ X_train.targets = X_train.targets[idx]
 # Define torch dataloader with filtered data
 train_loader = DataLoader(X_train, batch_size=batch_size, shuffle=True)
 
-n_samples_show = 6
 
 data_iter = iter(train_loader)
-fig, axes = plt.subplots(nrows=1, ncols=n_samples_show, figsize=(10, 3))
-
-while n_samples_show > 0:
-    images, targets = data_iter.__next__()
-
-    axes[n_samples_show - 1].imshow(images[0, 0].numpy().squeeze(), cmap="gray")
-    axes[n_samples_show - 1].set_xticks([])
-    axes[n_samples_show - 1].set_yticks([])
-    axes[n_samples_show - 1].set_title("Labeled: {}".format(targets[0].item()))
-
-    n_samples_show -= 1
 
 # Test Dataset
 # -------------
@@ -120,8 +109,7 @@ for l in range(n_layers):
 # Define and create QNN
 def create_qnn():
     feature_map = ZZFeatureMap(n_qbits)# encoding_circuit#ZZFeatureMap(2)
-    ansatz = parametrised_circuit  # RealAmplitudes(n_qbits, reps=1)#parametrised_circuit#RealAmplitudes(2, reps=1)
-    # REMEMBER TO SET input_gradients=True FOR ENABLING HYBRID GRADIENT BACKPROP
+    ansatz = parametrised_circuit#RealAmplitudes(n_qbits, reps=1)#parametrised_circuit#RealAmplitudes(2, reps=1)
     qnn = TwoLayerQNN(
         n_qbits,
         feature_map,
@@ -135,31 +123,8 @@ def create_qnn():
 qnn = create_qnn()
 #print(qnn.operator)
 
+
 class Net(Module):
-    def __init__(self, qnn):
-        super().__init__()
-        self.conv1 = Conv2d(1, 3, kernel_size=4)
-        self.conv2 = Conv2d(3, 3, kernel_size=2)
-        self.fc1 = Linear(27, n_qbits)
-        self.qnn = TorchConnector(qnn)  # Apply torch connector, weights chosen
-
-    def forward(self, x):
-        
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        # print(x.shape)
-        x = F.max_pool2d(x, 2)
-        # print(x.shape)
-
-        x = x.view(x.shape[0], -1)
-        # print(x.shape)
-
-        x = self.fc1(x)
-        x = self.qnn(x)  # apply QNN
-        return cat((x, 1 - x), -1)
-
-
-class ClassicNet(Module):
     def __init__(self):
         super().__init__()
         self.conv1 = Conv2d(1, 6, kernel_size=4)
@@ -182,83 +147,63 @@ class ClassicNet(Module):
         return x  # cat((x, 1 - x), -1)
 
 
-# model = Net(qnn)
-classic_model = ClassicNet()
 # Define model, optimizer, and loss function
-# optimizer = optim.Adam(model.parameters(), lr=0.001)
-classic_optimizer = optim.Adam(classic_model.parameters(), lr=0.001)
 
+model = Net()
+optimizer = optim.Adam(model.parameters(), lr=0.001)
 loss_func = NLLLoss()
 
 # Start training
 epochs = 5  # Set number of epochs
 loss_list = []  # Store loss history
-# model.train()  # Set model to training mode
-#
-# for epoch in range(epochs):
-#     total_loss = []
-#     for batch_idx, (data, target) in enumerate(train_loader):
-#         optimizer.zero_grad(set_to_none=True)  # Initialize gradient
-#         output = model(data)  # Forward pass
-#         loss = loss_func(output, target)  # Calculate loss
-#         loss.backward()  # Backward pass
-#         optimizer.step()  # Optimize weights
-#         total_loss.append(loss.item())  # Store loss
-#     loss_list.append(sum(total_loss) / len(total_loss))
-#     print("Training [{:.0f}%]\tLoss: {:.4f}".format(100.0 * (epoch + 1) / epochs, loss_list[-1]))
-#
-# model.eval()  # set model to evaluation mode
-# with no_grad():
-#
-#     correct = 0
-#     for batch_idx, (data, target) in enumerate(test_loader):
-#         output = model(data)
-#         if len(output.shape) == 1:
-#             output = output.reshape(1, *output.shape)
-#
-#         pred = output.argmax(dim=1, keepdim=True)
-#         correct += pred.eq(target.view_as(pred)).sum().item()
-#
-#         loss = loss_func(output, target)
-#         total_loss.append(loss.item())
-#
-#     print(
-#         "Performance on test data:\n\tLoss: {:.4f}\n\tAccuracy: {:.1f}%".format(
-#             sum(total_loss) / len(total_loss), correct / len(test_loader) / batch_size * 100
-#         )
-#     )
-#
-#     model_parameters = filter(lambda p: p.requires_grad, model.parameters())
-#     params = sum([np.prod(p.size()) for p in model_parameters])
-# ----------------------------------------------------------------------------------------
-# Start training
-epochs = 5  # Set number of epochs
-loss_list = []  # Store loss history
-classic_model.train()  # Set model to training mode
 
-for epoch in range(epochs):
-    total_loss = []
-    for batch_idx, (data, target) in enumerate(train_loader):
-        classic_optimizer.zero_grad(set_to_none=True)  # Initialize gradient
-        output = classic_model(data)  # Forward pass
-        loss = loss_func(output, target)  # Calculate loss
-        loss.backward()  # Backward pass
-        classic_optimizer.step()  # Optimize weights
-        total_loss.append(loss.item())  # Store loss
-    loss_list.append(sum(total_loss) / len(total_loss))
-    print("Training [{:.0f}%]\tLoss: {:.4f}".format(100.0 * (epoch + 1) / epochs, loss_list[-1]))
+train = 1  # if 0 we just load a previously saved model
+eps   = 0.005
+adv   = 1
+plot  = 1
+n_samples_show = 7 
 
-classic_model.eval()  # set model to evaluation mode
+if train:
+    
+    print(sum(p.numel() for p in model.parameters() if p.requires_grad)) # number of parameters
+    
+    # this is just default training code; I just copy and paste it into every pytorch project
+
+    model.train()  # Set model to training mode
+    for epoch in range(epochs):
+        total_loss = []
+        for batch_idx, (data, target) in enumerate(train_loader):
+            optimizer.zero_grad(set_to_none=True)  # Initialize gradient
+            output = model(data)  # Forward pass
+            loss = loss_func(output, target)  # Calculate loss
+            loss.backward()  # Backward pass
+            optimizer.step()  # Optimize weights
+            total_loss.append(loss.item())  # Store loss
+        loss_list.append(sum(total_loss) / len(total_loss))
+        print("Training [{:.0f}%]\tLoss: {:.4f}".format(100.0 * (epoch + 1) / epochs, loss_list[-1]))
+
+    torch.save(model.state_dict(), "model.pt")
+
+else:
+    model.load_state_dict(torch.load("model.pt"))
+
+
+#model.eval()  # set model to evaluation mode
 with no_grad():
 
+    total_loss = []
     correct = 0
     for batch_idx, (data, target) in enumerate(test_loader):
-        output = classic_model(data)
-        if len(output.shape) == 1:
-            output = output.reshape(1, *output.shape)
+        
+        # eval on test data
+        output = model(data)
+        
+        # output is two numbers, the prob of being 0 or 1
+        # argmax of this gives the actual prediction
 
         pred = output.argmax(dim=1, keepdim=True)
-        print(output)
+        
+        # correct is how many times the predictions equal the target labels
         correct += pred.eq(target.view_as(pred)).sum().item()
 
         loss = loss_func(output, target)
@@ -270,6 +215,62 @@ with no_grad():
         )
     )
 
-    # model_parameters = filter(lambda p: p.requires_grad, model.parameters())
-    # params = sum([np.prod(p.size()) for p in model_parameters])
+fig, axes = plt.subplots(nrows=2, ncols=n_samples_show, figsize=(16, 6))
+fig.tight_layout()
+plt.subplots_adjust(hspace = .001)
+
+if adv:
+
+    total_loss = []
+    
+    clean_acc = 0
+    adv_acc   = 0
+
+    for batch_idx, (data, target) in enumerate(test_loader):
+        
+        data.requires_grad = False
+        delta = torch.zeros_like(data).requires_grad_(True)
+        original = data.clone()
+
+        for i in range(20):
+            
+            delta = torch.zeros_like(data).requires_grad_(True)
+            output = model(data + delta)  # Forward pass
+            loss = loss_func(output, target)  # Calculate loss
+            
+            model.zero_grad()
+            loss.backward()  # Backward pass
+            
+            delta = eps * delta.grad.detach().sign()
+            data = data + delta
+        
+        with no_grad():
+
+            clean_pred = model(original).argmax(dim=1, keepdim=True)
+            clean_correct = clean_pred.eq(target.view_as(pred)).sum().item() 
+            clean_acc += clean_correct
+            
+            adv_pred = model(data).argmax(dim=1, keepdim=True)
+            adv_correct = adv_pred.eq(target.view_as(adv_pred)).sum().item()
+            adv_acc += adv_correct
+
+        if plot:
+            axes[0, batch_idx].imshow((original[0, 0]).numpy().squeeze(), cmap="gray")
+            axes[1, batch_idx].imshow((data[0, 0]).numpy().squeeze(), cmap="gray")
+            axes[0, batch_idx].set_xticks([])
+            axes[0, batch_idx].set_yticks([])
+            axes[0, batch_idx].set_title("Correct!" * int(clean_correct) + "Wrong :(" * (1 - int(clean_correct)), color='blue'*int(clean_correct) + 'red' * (1-int(clean_correct)))
+            axes[1, batch_idx].set_xticks([])
+            axes[1, batch_idx].set_yticks([])
+            axes[1, batch_idx].set_title("Correct!" * int(adv_correct) + "Wrong :(" * (1 - int(adv_correct)), color='blue'*int(adv_correct) + 'red' * (1-int(adv_correct)))
+            #plt.imshow(data[0,0], cmap=plt.cm.binary_r)
+            if batch_idx == n_samples_show - 1:
+                plt.show()
+                exit()
+
+
+print(clean_acc / len(test_loader) / batch_size * 100, adv_acc/ len(test_loader) / batch_size * 100)
+
+
+
 
