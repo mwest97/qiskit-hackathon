@@ -154,7 +154,7 @@ epochs = 5  # Set number of epochs
 loss_list = []  # Store loss history
 
 train = 0  # if 0 we just load a previously saved model 
-eps   = 0.05
+eps   = 0.005
 adv   = 1
 plot  = 1
 n_samples_show = 7 
@@ -228,7 +228,7 @@ if adv:
         delta = torch.zeros_like(data).requires_grad_(True)
         original = data.clone()
 
-        for i in range(5):
+        for i in range(20):
             
             delta = torch.zeros_like(data).requires_grad_(True)
             output = model(data + delta)  # Forward pass
