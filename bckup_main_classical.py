@@ -47,11 +47,11 @@ X_train = datasets.MNIST(
 )
 
 # Filter out labels (originally 0-9), leaving only labels 0 and 1
-idx = np.append(
-    np.where(X_train.targets == 0)[0][:n_samples], np.where(X_train.targets == 1)[0][:n_samples]
-)
-X_train.data = X_train.data[idx]
-X_train.targets = X_train.targets[idx]
+# idx = np.append(
+#     np.where(X_train.targets == 0)[0][:n_samples], np.where(X_train.targets == 1)[0][:n_samples]
+# )
+X_train.data = X_train.data[:1000]
+X_train.targets = X_train.targets[:1000]
 
 # Define torch dataloader with filtered data
 train_loader = DataLoader(X_train, batch_size=batch_size, shuffle=True)
@@ -129,7 +129,7 @@ class Net(Module):
         super().__init__()
         self.conv1 = Conv2d(1, 6, kernel_size=4)
         self.conv2 = Conv2d(6, 3, kernel_size=2)
-        self.fc1 = Linear(12, 2)
+        self.fc1 = Linear(12, 10)
 
     def forward(self, x):
         x = F.relu(self.conv1(x))
@@ -160,17 +160,17 @@ loss_list = []  # Store loss history
 train = 1  # if 0 we just load a previously saved model
 eps   = 0.005
 adv   = 1
-plot  = 1
+plot  = 0
 n_samples_show = 7 
 
 if train:
     
     print(sum(p.numel() for p in model.parameters() if p.requires_grad)) # number of parameters
-    
     # this is just default training code; I just copy and paste it into every pytorch project
 
     model.train()  # Set model to training mode
     for epoch in range(epochs):
+        print(f"epoch: {epoch}")
         total_loss = []
         for batch_idx, (data, target) in enumerate(train_loader):
             optimizer.zero_grad(set_to_none=True)  # Initialize gradient
@@ -182,10 +182,10 @@ if train:
         loss_list.append(sum(total_loss) / len(total_loss))
         print("Training [{:.0f}%]\tLoss: {:.4f}".format(100.0 * (epoch + 1) / epochs, loss_list[-1]))
 
-    torch.save(model.state_dict(), "model.pt")
+    torch.save(model.state_dict(), "classical_model.pt")
 
 else:
-    model.load_state_dict(torch.load("model.pt"))
+    model.load_state_dict(torch.load("classical_model.pt"))
 
 
 #model.eval()  # set model to evaluation mode
@@ -233,7 +233,7 @@ if adv:
         original = data.clone()
 
         for i in range(20):
-            
+            print(f"batch: {batch_idx}, i: {i}")
             delta = torch.zeros_like(data).requires_grad_(True)
             output = model(data + delta)  # Forward pass
             loss = loss_func(output, target)  # Calculate loss
