@@ -177,9 +177,9 @@ class ClassicNet(Module):
         x = x.view(x.shape[0], -1)
         # print(x.shape)
 
-        x = self.fc1(x)
+        x = torch.nn.Softmax(dim=1)(self.fc1(x))
         # print(x)
-        return cat((x, 1 - x), -1)
+        return x#cat((x, 1 - x), -1)
 
 
 # model = Net(qnn)
