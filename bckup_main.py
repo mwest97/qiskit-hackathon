@@ -3,6 +3,7 @@ from qiskit import Aer, QuantumCircuit
 from qiskit.circuit import Parameter
 import numpy as np
 import torch
+from time import time
 import torchvision
 from torch import cat, no_grad, manual_seed
 from torch.utils.data import DataLoader
@@ -40,6 +41,7 @@ manual_seed(42)
 
 batch_size = 1
 n_samples = 100  # We will concentrate on the first 100 samples
+_time = round(time())
 
 # Use pre-defined torchvision function to load MNIST train data
 X_train = datasets.MNIST(
@@ -51,6 +53,9 @@ idx = np.append(
     np.where(X_train.targets == 0)[0][:n_samples], np.where(X_train.targets == 1)[0][:n_samples]
 )
 X_train.data = X_train.data[idx]
+
+X_train.targets[np.where(X_train.targets == 1)] = 0
+X_train.targets[np.where(X_train.targets == 7)] = 1
 X_train.targets = X_train.targets[idx]
 
 # Define torch dataloader with filtered data
@@ -154,7 +159,7 @@ epochs = 5  # Set number of epochs
 loss_list = []  # Store loss history
 
 train = 0  # if 0 we just load a previously saved model 
-eps   = 0.005
+eps   = 0.01
 adv   = 1
 plot  = 1
 n_samples_show = 7 
@@ -243,7 +248,7 @@ if adv:
         with no_grad():
 
             clean_pred = model(original).argmax(dim=1, keepdim=True)
-            clean_correct = clean_pred.eq(target.view_as(pred)).sum().item() 
+            clean_correct = clean_pred.eq(target.view_as(clean_pred)).sum().item() 
             clean_acc += clean_correct
             
             adv_pred = model(data).argmax(dim=1, keepdim=True)
@@ -262,11 +267,9 @@ if adv:
             #plt.imshow(data[0,0], cmap=plt.cm.binary_r)
             if batch_idx == n_samples_show - 1:
                 plt.show()
+                plt.savefig(f"plots/Q-0-1-{_time}.png")
                 exit()
 
 
 print(clean_acc / len(test_loader) / batch_size * 100, adv_acc/ len(test_loader) / batch_size * 100)
-
-
-
 
