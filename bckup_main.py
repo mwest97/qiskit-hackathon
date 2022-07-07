@@ -56,20 +56,8 @@ X_train.targets = X_train.targets[idx]
 # Define torch dataloader with filtered data
 train_loader = DataLoader(X_train, batch_size=batch_size, shuffle=True)
 
-n_samples_show = 6
 
 data_iter = iter(train_loader)
-fig, axes = plt.subplots(nrows=1, ncols=n_samples_show, figsize=(10, 3))
-
-while n_samples_show > 0:
-    images, targets = data_iter.__next__()
-
-    axes[n_samples_show - 1].imshow(images[0, 0].numpy().squeeze(), cmap="gray")
-    axes[n_samples_show - 1].set_xticks([])
-    axes[n_samples_show - 1].set_yticks([])
-    axes[n_samples_show - 1].set_title("Labeled: {}".format(targets[0].item()))
-
-    n_samples_show -= 1
 
 # Test Dataset
 # -------------
@@ -165,8 +153,11 @@ loss_func = NLLLoss()
 epochs = 5  # Set number of epochs
 loss_list = []  # Store loss history
 
-train = 1  # if 0 we just load a previously saved model 
-eps = 0.1
+train = 0  # if 0 we just load a previously saved model 
+eps   = 0.05
+adv   = 1
+plot  = 1
+n_samples_show = 7 
 
 if train:
     
@@ -193,7 +184,7 @@ else:
     model.load_state_dict(torch.load("model.pt"))
 
 
-model.eval()  # set model to evaluation mode
+#model.eval()  # set model to evaluation mode
 with no_grad():
 
     total_loss = []
@@ -219,4 +210,63 @@ with no_grad():
             sum(total_loss) / len(total_loss), correct / len(test_loader) / batch_size * 100
         )
     )
+
+fig, axes = plt.subplots(nrows=2, ncols=n_samples_show, figsize=(16, 6))
+fig.tight_layout()
+plt.subplots_adjust(hspace = .001)
+
+if adv:
+
+    total_loss = []
+    
+    clean_acc = 0
+    adv_acc   = 0
+
+    for batch_idx, (data, target) in enumerate(test_loader):
+        
+        data.requires_grad = False
+        delta = torch.zeros_like(data).requires_grad_(True)
+        original = data.clone()
+
+        for i in range(5):
+            
+            delta = torch.zeros_like(data).requires_grad_(True)
+            output = model(data + delta)  # Forward pass
+            loss = loss_func(output, target)  # Calculate loss
+            
+            model.zero_grad()
+            loss.backward()  # Backward pass
+            
+            delta = eps * delta.grad.detach().sign()
+            data = data + delta
+        
+        with no_grad():
+
+            clean_pred = model(original).argmax(dim=1, keepdim=True)
+            clean_correct = clean_pred.eq(target.view_as(pred)).sum().item() 
+            clean_acc += clean_correct
+            
+            adv_pred = model(data).argmax(dim=1, keepdim=True)
+            adv_correct = adv_pred.eq(target.view_as(adv_pred)).sum().item()
+            adv_acc += adv_correct
+
+        if plot:
+            axes[0, batch_idx].imshow((original[0, 0]).numpy().squeeze(), cmap="gray")
+            axes[1, batch_idx].imshow((data[0, 0]).numpy().squeeze(), cmap="gray")
+            axes[0, batch_idx].set_xticks([])
+            axes[0, batch_idx].set_yticks([])
+            axes[0, batch_idx].set_title("Correct!" * int(clean_correct) + "Wrong :(" * (1 - int(clean_correct)), color='blue'*int(clean_correct) + 'red' * (1-int(clean_correct)))
+            axes[1, batch_idx].set_xticks([])
+            axes[1, batch_idx].set_yticks([])
+            axes[1, batch_idx].set_title("Correct!" * int(adv_correct) + "Wrong :(" * (1 - int(adv_correct)), color='blue'*int(adv_correct) + 'red' * (1-int(adv_correct)))
+            #plt.imshow(data[0,0], cmap=plt.cm.binary_r)
+            if batch_idx == n_samples_show - 1:
+                plt.show()
+                exit()
+
+
+print(clean_acc / len(test_loader) / batch_size * 100, adv_acc/ len(test_loader) / batch_size * 100)
+
+
+
 
